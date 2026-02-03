@@ -1,0 +1,183 @@
+{
+  "name": "ImprovedDataGenerator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generate-dataset",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [0, 0],
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "webhookId": "generate-dataset"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DATASET_GENERATOR_URL }}/api/webhook",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  description: $json.body.prompt || $json.body.description,\n  rows: $json.body.rows || 1000,\n  format: $json.body.format || 'csv',\n  seed: $json.body.seed,\n  sync: true,\n  options: {\n    includeEdgeCases: $json.body.includeEdgeCases ?? true,\n    privacyLevel: $json.body.privacyLevel || 'high',\n    nullPercentage: $json.body.nullPercentage || 0.02\n  }\n}) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0],
+      "id": "call-generator",
+      "name": "Call Dataset Generator"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "success-check",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [440, 0],
+      "id": "check-success",
+      "name": "Check Success"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.DATASET_GENERATOR_URL }}{{ $('Call Dataset Generator').item.json.files.data }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, -100],
+      "id": "download-data",
+      "name": "Download Data"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  success: true,\n  jobId: $('Call Dataset Generator').item.json.jobId,\n  schema: $('Call Dataset Generator').item.json.schema,\n  files: $('Call Dataset Generator').item.json.files,\n  data: $json.data\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [880, -100],
+      "id": "success-response",
+      "name": "Success Response"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  success: false,\n  error: $('Call Dataset Generator').item.json.error || 'Generation failed',\n  details: $('Call Dataset Generator').item.json.details\n}) }}",
+        "options": {
+          "responseCode": 500
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [660, 100],
+      "id": "error-response",
+      "name": "Error Response"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Call Dataset Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Dataset Generator": {
+      "main": [
+        [
+          {
+            "node": "Check Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Success": {
+      "main": [
+        [
+          {
+            "node": "Download Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Data": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "improved-v1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "notes": "Improved dataset generator workflow that uses the production synthetic data generator API. Set DATASET_GENERATOR_URL environment variable to your deployed generator URL."
+  },
+  "id": "improved-data-generator",
+  "tags": []
+}
