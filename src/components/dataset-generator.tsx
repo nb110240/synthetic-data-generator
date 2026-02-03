@@ -41,7 +41,13 @@ import {
   Eye,
   ChevronLeft,
   ChevronRight,
+  LogIn,
 } from "lucide-react";
+import { useAuth } from "@/components/providers/supabase-provider";
+import { LoginForm } from "@/components/auth/login-form";
+import { UserMenu } from "@/components/auth/user-menu";
+import { DatasetHistory } from "@/components/dataset-history";
+import type { Dataset } from "@/lib/supabase/types";
 
 interface JobStatus {
   jobId: string;
@@ -113,6 +119,8 @@ const EXAMPLE_PROMPTS = [
 ];
 
 export function DatasetGenerator() {
+  const { user, isLoading: isAuthLoading } = useAuth();
+
   const [description, setDescription] = useState("");
   const [rows, setRows] = useState(1000);
   const [format, setFormat] = useState<"csv" | "json" | "parquet">("csv");
@@ -135,6 +143,32 @@ export function DatasetGenerator() {
   const [chatInput, setChatInput] = useState("");
   const [isChatLoading, setIsChatLoading] = useState(false);
 
+  // Auth UI state
+  const [showLoginForm, setShowLoginForm] = useState(false);
+  const [historyRefreshTrigger, setHistoryRefreshTrigger] = useState(0);
+
+  // Load dataset from history
+  const handleSelectDataset = (dataset: Dataset) => {
+    setDescription(dataset.description);
+    setRows(dataset.rows);
+    setFormat(dataset.format as "csv" | "json" | "parquet");
+    setSeed(dataset.seed ?? undefined);
+    if (dataset.options) {
+      const opts = dataset.options as Record<string, unknown>;
+      if (typeof opts.includeEdgeCases === "boolean") {
+        setIncludeEdgeCases(opts.includeEdgeCases);
+      }
+      if (opts.privacyLevel === "low" || opts.privacyLevel === "medium" || opts.privacyLevel === "high") {
+        setPrivacyLevel(opts.privacyLevel);
+      }
+    }
+    // Clear any existing job state
+    setJobStatus(null);
+    setDataPreview(null);
+    setChatMessages([]);
+    setError(null);
+  };
+
   const pollJobStatus = useCallback(async (jobId: string) => {
     try {
       const response = await fetch(`/api/status/${jobId}`);
@@ -149,6 +183,10 @@ export function DatasetGenerator() {
           setSelectedTable(status.schema.tables[0].name);
           // Auto-load preview after completion
           loadDataPreview(jobId, status.schema.tables[0].name);
+          // Refresh history to show newly generated dataset
+          if (user) {
+            setHistoryRefreshTrigger((prev) => prev + 1);
+          }
         }
       }
     } catch (err) {
@@ -325,8 +363,40 @@ export function DatasetGenerator() {
 
   return (
     <div className="container mx-auto max-w-7xl p-6 space-y-8">
+      {/* Top Bar with Auth */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-5 w-5 text-purple-500" />
+          <span className="font-semibold text-purple-600 hidden sm:inline">Synthetic Data</span>
+        </div>
+        <div className="flex items-center gap-3">
+          {isAuthLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin text-purple-500" />
+          ) : user ? (
+            <UserMenu user={user} />
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowLoginForm(true)}
+              className="border-purple-500/30 hover:border-purple-500/50"
+            >
+              <LogIn className="h-4 w-4 mr-2" />
+              Sign In
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Login Modal */}
+      {showLoginForm && !user && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <LoginForm onClose={() => setShowLoginForm(false)} />
+        </div>
+      )}
+
       {/* Header */}
-      <div className="text-center space-y-4 py-8">
+      <div className="text-center space-y-4 py-4">
         <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-purple-500/10 to-cyan-500/10 border border-purple-500/20">
           <Sparkles className="h-4 w-4 text-purple-500" />
           <span className="text-sm font-medium text-purple-600">AI-Powered Data Generation</span>
@@ -341,9 +411,21 @@ export function DatasetGenerator() {
       </div>
 
       {/* Main Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+        {/* History Sidebar - Only show when logged in */}
+        {user && (
+          <div className="xl:col-span-1 order-last xl:order-first">
+            <div className="sticky top-6">
+              <DatasetHistory
+                onSelectDataset={handleSelectDataset}
+                refreshTrigger={historyRefreshTrigger}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Left Column - Input */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className={`${user ? "xl:col-span-2" : "lg:col-span-2"} space-y-6`}>
           {/* Description Input */}
           <Card className="border-2 border-purple-500/20 shadow-lg shadow-purple-500/5">
             <CardHeader>

@@ -9,11 +9,26 @@ import { formatOutput } from './output-formatter';
 // Use global to persist jobs across Next.js hot reloads in development
 const globalForJobs = globalThis as unknown as {
   jobs: Map<string, GenerationJob> | undefined;
+  jobUsers: Map<string, string> | undefined;
 };
 
 // In-memory job storage (replace with Redis/database for production)
 const jobs = globalForJobs.jobs ?? new Map<string, GenerationJob>();
 globalForJobs.jobs = jobs;
+
+// Track which user owns which job (for Supabase sync)
+const jobUsers = globalForJobs.jobUsers ?? new Map<string, string>();
+globalForJobs.jobUsers = jobUsers;
+
+// Set user for a job (called from API route)
+export function setJobUser(jobId: string, userId: string): void {
+  jobUsers.set(jobId, userId);
+}
+
+// Get user for a job
+export function getJobUser(jobId: string): string | undefined {
+  return jobUsers.get(jobId);
+}
 
 // Base directory for generated files
 const OUTPUT_DIR = process.env.OUTPUT_DIR || '/tmp/synthetic-datasets';
@@ -50,6 +65,17 @@ export function updateJob(jobId: string, updates: Partial<GenerationJob>): void 
   if (job) {
     Object.assign(job, updates);
     jobs.set(jobId, job);
+
+    // Sync to Supabase if user is associated with this job
+    const userId = jobUsers.get(jobId);
+    if (userId) {
+      // Dynamic import to avoid circular dependency
+      import('./dataset-service').then(({ saveDatasetToSupabase }) => {
+        saveDatasetToSupabase(userId, job).catch((err) => {
+          console.error('Supabase sync error:', err);
+        });
+      });
+    }
   }
 }
 

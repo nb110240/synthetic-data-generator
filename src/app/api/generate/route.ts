@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GenerationRequestSchema } from '@/lib/types';
-import { createJob } from '@/lib/job-manager';
+import { createJob, setJobUser } from '@/lib/job-manager';
+import { createClient } from '@/lib/supabase/server';
+import { saveDatasetToSupabase } from '@/lib/dataset-service';
 
 export async function POST(request: NextRequest) {
   try {
+    // Check for authenticated user
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
     const body = await request.json();
 
     // Validate request
@@ -22,6 +30,17 @@ export async function POST(request: NextRequest) {
 
     // Create job
     const job = await createJob(validatedRequest);
+
+    // If user is authenticated, save to Supabase and track user
+    if (user) {
+      setJobUser(job.id, user.id);
+      try {
+        await saveDatasetToSupabase(user.id, job);
+      } catch (error) {
+        console.error('Failed to save to Supabase:', error);
+        // Continue even if save fails - job still works in-memory
+      }
+    }
 
     return NextResponse.json({
       jobId: job.id,
