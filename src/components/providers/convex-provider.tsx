@@ -1,8 +1,8 @@
 'use client';
 
-import { ReactNode, createContext, useContext } from 'react';
-import { ConvexReactClient, useConvexAuth } from 'convex/react';
-import { ConvexAuthProvider } from '@convex-dev/auth/react';
+import { ReactNode, createContext, useContext, useEffect, useState } from 'react';
+import { ConvexReactClient } from 'convex/react';
+import { ConvexAuthProvider, useAuthToken } from '@convex-dev/auth/react';
 
 const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
 
@@ -24,7 +24,16 @@ export const useAuthContext = () => useContext(AuthContext);
 
 // Internal component that uses Convex auth hooks (only rendered when Convex is configured)
 function ConvexAuthBridge({ children }: { children: ReactNode }) {
-  const { isLoading, isAuthenticated } = useConvexAuth();
+  const token = useAuthToken();
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Token presence indicates authentication
+  const isAuthenticated = token !== null;
+
+  useEffect(() => {
+    // After initial render, we know the auth state
+    setIsLoading(false);
+  }, []);
 
   return (
     <AuthContext.Provider value={{ isLoading, isAuthenticated }}>
