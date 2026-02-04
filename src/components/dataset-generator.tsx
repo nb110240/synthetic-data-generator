@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { useMutation } from "convex/react";
+import { api } from "../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -127,6 +129,7 @@ const EXAMPLE_PROMPTS = [
 
 export function DatasetGenerator() {
   const { user, isLoading: isAuthLoading, isAuthenticated } = useAuth();
+  const saveDataset = useMutation(api.datasets.saveDataset);
 
   const [description, setDescription] = useState("");
   const [rows, setRows] = useState(1000);
@@ -171,21 +174,38 @@ export function DatasetGenerator() {
     setError(null);
   };
 
-  const pollJobStatus = useCallback(async (jobId: string) => {
+  const pollJobStatus = useCallback(async (jobId: string, requestData?: { description: string; rows: number; format: "csv" | "json" | "parquet"; seed?: number }) => {
     try {
       const response = await fetch(`/api/status/${jobId}`);
       const status: JobStatus = await response.json();
       setJobStatus(status);
 
       if (status.status !== "completed" && status.status !== "failed") {
-        setTimeout(() => pollJobStatus(jobId), 1000);
+        setTimeout(() => pollJobStatus(jobId, requestData), 1000);
       } else {
         setIsGenerating(false);
         if (status.status === "completed" && status.schema?.tables?.[0]) {
           setSelectedTable(status.schema.tables[0].name);
           loadDataPreview(jobId, status.schema.tables[0].name);
-          if (isAuthenticated) {
-            setHistoryRefreshTrigger((prev) => prev + 1);
+
+          // Save to Convex history if authenticated
+          if (isAuthenticated && requestData) {
+            try {
+              await saveDataset({
+                jobId,
+                description: requestData.description,
+                rows: requestData.rows,
+                format: requestData.format,
+                seed: requestData.seed,
+                status: "completed",
+                progress: 100,
+                schema: status.schema,
+                completedAt: Date.now(),
+              });
+              setHistoryRefreshTrigger((prev) => prev + 1);
+            } catch (err) {
+              console.error("Failed to save dataset to history:", err);
+            }
           }
         }
       }
@@ -193,7 +213,7 @@ export function DatasetGenerator() {
       setError("Failed to check job status");
       setIsGenerating(false);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, saveDataset]);
 
   const loadDataPreview = async (jobId: string, tableName: string) => {
     setIsLoadingPreview(true);
@@ -245,7 +265,7 @@ export function DatasetGenerator() {
         throw new Error(result.error || result.details || "Generation failed");
       }
 
-      pollJobStatus(result.jobId);
+      pollJobStatus(result.jobId, { description, rows, format, seed });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generation failed");
       setIsGenerating(false);
