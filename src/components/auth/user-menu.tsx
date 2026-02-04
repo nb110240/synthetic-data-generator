@@ -1,30 +1,30 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { useAuthActions } from '@convex-dev/auth/react';
 import { Button } from '@/components/ui/button';
 import { LogOut, User } from 'lucide-react';
-import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 interface UserMenuProps {
-  user: SupabaseUser;
+  user?: {
+    id: string;
+    email?: string;
+    name?: string;
+  };
 }
 
 export function UserMenu({ user }: UserMenuProps) {
-  const router = useRouter();
+  const { signOut } = useAuthActions();
 
   const handleSignOut = async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.refresh();
+    await signOut();
   };
 
   return (
     <div className="flex items-center gap-3">
       <div className="flex items-center gap-2 text-sm">
-        <User className="h-4 w-4 text-purple-500" />
+        <User className="h-4 w-4 text-lime" />
         <span className="text-muted-foreground hidden sm:inline">
-          {user.email}
+          {user?.email || user?.name || 'Signed In'}
         </span>
       </div>
       <Button
