@@ -67,11 +67,11 @@ interface JobStatus {
   status: "queued" | "planning" | "generating" | "validating" | "completed" | "failed";
   progress: number;
   error?: string;
-  files?: {
-    data: string;
-    schema: string;
-    metadata: string;
-    readme: string;
+  fileContents?: {
+    data: string | null;
+    schema: string | null;
+    metadata: string | null;
+    readme: string | null;
   };
   schema?: {
     name: string;
@@ -272,13 +272,50 @@ export function DatasetGenerator() {
     }
   };
 
-  const handleDownload = async (fileType: "data" | "schema" | "metadata" | "readme", downloadFormat?: string) => {
-    if (!jobStatus?.files) return;
-    let url = jobStatus.files[fileType];
-    if (downloadFormat && fileType === "data") {
-      url += `?format=${downloadFormat}`;
+  const handleDownload = (fileType: "data" | "schema" | "metadata" | "readme", downloadFormat?: string) => {
+    if (!jobStatus?.fileContents) return;
+
+    const content = jobStatus.fileContents[fileType];
+    if (!content) return;
+
+    // Determine file extension and MIME type
+    let filename: string;
+    let mimeType: string;
+
+    if (fileType === "data") {
+      const fmt = downloadFormat || format;
+      switch (fmt) {
+        case "json":
+          filename = "data.json";
+          mimeType = "application/json";
+          break;
+        case "csv":
+        default:
+          filename = "data.csv";
+          mimeType = "text/csv";
+          break;
+      }
+    } else if (fileType === "schema") {
+      filename = "schema.json";
+      mimeType = "application/json";
+    } else if (fileType === "metadata") {
+      filename = "metadata.json";
+      mimeType = "application/json";
+    } else {
+      filename = "README.md";
+      mimeType = "text/markdown";
     }
-    window.open(url, "_blank");
+
+    // Create blob and download
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const handleChatSubmit = async () => {
@@ -652,7 +689,7 @@ Example: Create an e-commerce dataset with customers, orders, and products. Incl
             )}
 
             {/* Results */}
-            {jobStatus.status === "completed" && jobStatus.files && (
+            {jobStatus.status === "completed" && jobStatus.fileContents && (
               <Tabs defaultValue="preview" className="w-full">
                 <TabsList className="w-full justify-start rounded-none border-b border-border bg-transparent h-auto p-0">
                   <TabsTrigger

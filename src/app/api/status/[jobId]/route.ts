@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getJob } from '@/lib/job-manager';
+import { getJob, getJobFile } from '@/lib/job-manager';
 
 export async function GET(
   request: NextRequest,
@@ -24,13 +24,28 @@ export async function GET(
 
   if (job.status === 'completed') {
     response.completedAt = job.completedAt?.toISOString();
-    response.files = {
-      data: `/api/download/${job.id}/data`,
-      schema: `/api/download/${job.id}/schema`,
-      metadata: `/api/download/${job.id}/metadata`,
-      readme: `/api/download/${job.id}/readme`,
-    };
     response.schema = job.schema;
+
+    // Include actual file contents for client-side download
+    // This avoids the serverless memory issue where download requests hit different instances
+    try {
+      const [dataFile, schemaFile, metadataFile, readmeFile] = await Promise.all([
+        getJobFile(jobId, 'data'),
+        getJobFile(jobId, 'schema'),
+        getJobFile(jobId, 'metadata'),
+        getJobFile(jobId, 'readme'),
+      ]);
+
+      response.fileContents = {
+        data: dataFile?.toString('utf-8') || null,
+        schema: schemaFile?.toString('utf-8') || null,
+        metadata: metadataFile?.toString('utf-8') || null,
+        readme: readmeFile?.toString('utf-8') || null,
+      };
+    } catch (err) {
+      console.error('Failed to read job files:', err);
+      response.fileContents = null;
+    }
   }
 
   if (job.status === 'failed') {
